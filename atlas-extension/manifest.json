@@ -1,0 +1,45 @@
+{
+  "manifest_version": 3,
+  "name": "Atlas AI",
+  "version": "0.1",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage",
+    "sidePanel"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "Atlas AI"
+  },
+  "side_panel": {
+    "default_path": "sidebar.html"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "struggle_detector.js",
+        "content.js"
+      ]
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "lib/pdf.min.js",
+        "lib/pdf.worker.min.js"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
+    }
+  ]
+}

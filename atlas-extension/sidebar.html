@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Atlas AI Sidebar</title>
+	<link rel="stylesheet" href="sidebar.css">
+</head>
+
+<body>
+	<div id="atlas-header">
+		<span class="logo">🎯</span>
+		<div class="header-content">
+			<span class="title">Atlas AI</span>
+			<select id="difficulty-level" class="glass-input">
+				<option value="beginner">Beginner</option>
+				<option value="student" selected>Student</option>
+				<option value="expert">Expert</option>
+			</select>
+		</div>
+	</div>
+	<!-- Logic Flow -->
+	<div id="logic-flow-section" class="card hidden">
+		<div class="card-header">
+			<div class="card-title">
+				<span class="icon">🔀</span> LOGIC FLOW
+			</div>
+		</div>
+		<div id="logic-flow-container" class="flowchart-container"></div>
+	</div>
+
+	<!-- Instant Playground -->
+	<div id="playground-section" class="card hidden">
+		<div class="card-header">
+			<div class="card-title">
+				<span class="icon">🐍</span> INSTANT PLAYGROUND
+			</div>
+		</div>
+		<div class="playground-wrapper">
+			<textarea id="python-editor" spellcheck="false" placeholder="Loading code..."></textarea>
+			<div class="playground-controls">
+				<button id="run-code-btn" class="secondary-btn">▶ Run Code</button>
+			</div>
+			<pre id="code-output" class="hidden"></pre>
+		</div>
+	</div>
+
+	<!-- GitHub Reference Search -->
+	<div id="github-search-section" class="card">
+		<div class="card-header">
+			<div class="card-title">
+				<span class="icon">🔍</span> REFERENCE SEARCH
+			</div>
+		</div>
+		<div class="search-wrapper">
+			<input type="text" id="github-search-input" placeholder="e.g. Adam Optimizer implementation" />
+			<button id="github-search-btn" class="secondary-btn">Search Code</button>
+		</div>
+		<div id="github-results" class="results-list hidden"></div>
+	</div>
+
+	<!-- Mindmap -->
+	<div id="mindmap-section" class="card">
+		<div class="card-header">
+			<div class="card-title">
+				<span class="icon">🧠</span> MINDMAP
+			</div>
+		</div>
+		<div id="mindmap-container">
+			<svg id="mindmap-svg" width="100%" height="100%"></svg>
+		</div>
+	</div>
+	<div id="atlas-sidebar">
+
+
+		<div class="card glass" id="summary-section">
+			<h3>Concept Summary</h3>
+			<p id="summary">Loading...</p>
+		</div>
+		<div class="card glass" id="concepts-section">
+			<h3>Key Concepts</h3>
+			<ul id="key-concepts"></ul>
+		</div>
+		<div class="card glass" id="next-step-section">
+			<h3>Next Step</h3>
+			<p id="next-step">Loading...</p>
+			<ul id="resources-list"></ul>
+		</div>
+		<div class="card glass" id="chat-section">
+			<h3>💬 Chat Assistant</h3>
+			<div id="chat-container">
+				<div id="chat-messages"></div>
+				<div id="chat-input-wrapper">
+					<input type="text" id="chat-input" placeholder="Ask a question about this topic..." />
+					<button id="chat-send">Send</button>
+				</div>
+			</div>
+		</div>
+	</div>
+	<script src="sidebar.js"></script>
+</body>
+
+</html>
