@@ -10,90 +10,184 @@
 
 <body>
 	<div id="atlas-header">
-		<span class="logo">🎯</span>
-		<div class="header-content">
+		<div class="logo-container">
+			<svg class="logo-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+				stroke-linecap="round" stroke-linejoin="round">
+				<circle cx="12" cy="12" r="10"></circle>
+				<circle cx="12" cy="12" r="6"></circle>
+				<circle cx="12" cy="12" r="2"></circle>
+			</svg>
 			<span class="title">Atlas AI</span>
-			<select id="difficulty-level" class="glass-input">
-				<option value="beginner">Beginner</option>
-				<option value="student" selected>Student</option>
-				<option value="expert">Expert</option>
-			</select>
 		</div>
-	</div>
-	<!-- Logic Flow -->
-	<div id="logic-flow-section" class="card hidden">
-		<div class="card-header">
-			<div class="card-title">
-				<span class="icon">🔀</span> LOGIC FLOW
-			</div>
-		</div>
-		<div id="logic-flow-container" class="flowchart-container"></div>
+		<select id="difficulty-level">
+			<option value="beginner">Beginner</option>
+			<option value="student" selected>Student</option>
+			<option value="expert">Expert</option>
+		</select>
 	</div>
 
-	<!-- Instant Playground -->
-	<div id="playground-section" class="card hidden">
-		<div class="card-header">
-			<div class="card-title">
-				<span class="icon">🐍</span> INSTANT PLAYGROUND
-			</div>
-		</div>
-		<div class="playground-wrapper">
-			<textarea id="python-editor" spellcheck="false" placeholder="Loading code..."></textarea>
-			<div class="playground-controls">
-				<button id="run-code-btn" class="secondary-btn">▶ Run Code</button>
-			</div>
-			<pre id="code-output" class="hidden"></pre>
-		</div>
-	</div>
-
-	<!-- GitHub Reference Search -->
-	<div id="github-search-section" class="card">
-		<div class="card-header">
-			<div class="card-title">
-				<span class="icon">🔍</span> REFERENCE SEARCH
-			</div>
-		</div>
-		<div class="search-wrapper">
-			<input type="text" id="github-search-input" placeholder="e.g. Adam Optimizer implementation" />
-			<button id="github-search-btn" class="secondary-btn">Search Code</button>
-		</div>
-		<div id="github-results" class="results-list hidden"></div>
-	</div>
-
-	<!-- Mindmap -->
-	<div id="mindmap-section" class="card">
-		<div class="card-header">
-			<div class="card-title">
-				<span class="icon">🧠</span> MINDMAP
-			</div>
-		</div>
-		<div id="mindmap-container">
-			<svg id="mindmap-svg" width="100%" height="100%"></svg>
-		</div>
-	</div>
 	<div id="atlas-sidebar">
-
-
-		<div class="card glass" id="summary-section">
-			<h3>Concept Summary</h3>
+		<!-- 1. Concept Summary -->
+		<div class="card" id="summary-section">
+			<h3>
+				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+					stroke-linejoin="round">
+					<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+					<polyline points="14 2 14 8 20 8"></polyline>
+					<line x1="16" y1="13" x2="8" y2="13"></line>
+					<line x1="16" y1="17" x2="8" y2="17"></line>
+					<polyline points="10 9 9 9 8 9"></polyline>
+				</svg>
+				Concept Summary
+			</h3>
 			<p id="summary">Loading...</p>
 		</div>
-		<div class="card glass" id="concepts-section">
-			<h3>Key Concepts</h3>
+
+		<!-- 2. Key Concepts -->
+		<div class="card" id="concepts-section">
+			<h3>
+				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+					stroke-linejoin="round">
+					<path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path>
+					<line x1="7" y1="7" x2="7.01" y2="7"></line>
+				</svg>
+				Key Concepts
+			</h3>
 			<ul id="key-concepts"></ul>
 		</div>
-		<div class="card glass" id="next-step-section">
-			<h3>Next Step</h3>
+
+		<!-- 3. Mindmap -->
+		<div id="mindmap-section" class="card">
+			<div class="card-header">
+				<div class="card-title">
+					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+						stroke-linejoin="round">
+						<path
+							d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z">
+						</path>
+						<polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+						<line x1="12" y1="22.08" x2="12" y2="12"></line>
+					</svg>
+					MINDMAP
+				</div>
+			</div>
+			<div id="mindmap-container">
+				<svg id="mindmap-svg" width="100%" height="100%"></svg>
+			</div>
+		</div>
+
+		<!-- 4. Next Step -->
+		<div class="card" id="next-step-section">
+			<h3>
+				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+					stroke-linejoin="round">
+					<path d="m12 19 7-7-7-7"></path>
+					<path d="M19 12H5"></path>
+				</svg>
+				Next Step
+			</h3>
 			<p id="next-step">Loading...</p>
 			<ul id="resources-list"></ul>
 		</div>
-		<div class="card glass" id="chat-section">
-			<h3>💬 Chat Assistant</h3>
+
+		<!-- 5. Logic Flow -->
+		<div id="logic-flow-section" class="card hidden">
+			<div class="card-header">
+				<div class="card-title">
+					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+						stroke-linejoin="round">
+						<path d="M6 3v12"></path>
+						<path d="M18 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"></path>
+						<path d="M6 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"></path>
+						<path d="M15 6a9 9 0 0 1-9 9"></path>
+					</svg>
+					LOGIC FLOW
+				</div>
+				<button id="toggle-flow-btn" class="icon-btn">
+					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+						stroke-linejoin="round">
+						<polyline points="6 9 12 15 18 9"></polyline>
+					</svg>
+				</button>
+			</div>
+			<div id="logic-flow-content" class="collapsed">
+				<div id="logic-flow-container" class="flowchart-container"></div>
+				<button id="view-full-diagram" class="secondary-btn">View Full Diagram</button>
+			</div>
+		</div>
+
+		<!-- 6. Instant Playground -->
+		<div id="playground-section" class="card hidden">
+			<div class="card-header">
+				<div class="card-title">
+					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+						stroke-linejoin="round">
+						<polyline points="4 17 10 11 4 5"></polyline>
+						<line x1="12" y1="19" x2="20" y2="19"></line>
+					</svg>
+					INSTANT PLAYGROUND
+				</div>
+				<button id="copy-playground-btn" class="icon-btn" title="Copy Code">
+					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+						stroke-linejoin="round">
+						<rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+						<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+					</svg>
+				</button>
+			</div>
+			<div class="playground-wrapper">
+				<textarea id="python-editor" spellcheck="false" placeholder="Loading code..."></textarea>
+				<div class="playground-controls">
+					<button id="run-code-btn" class="secondary-btn">Execute</button>
+				</div>
+				<pre id="code-output" class="hidden"></pre>
+			</div>
+		</div>
+
+		<!-- 7. GitHub Reference Search -->
+		<div id="github-search-section" class="card">
+			<div class="card-header">
+				<div class="card-title">
+					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+						stroke-linejoin="round">
+						<circle cx="11" cy="11" r="8"></circle>
+						<line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+					</svg>
+					REFERENCE SEARCH
+				</div>
+			</div>
+			<div class="search-wrapper">
+				<input type="text" id="github-search-input" placeholder="e.g. Adam Optimizer implementation" />
+				<button id="github-search-btn" class="icon-btn">
+					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+						stroke-linejoin="round">
+						<polyline points="9 18 15 12 9 6"></polyline>
+					</svg>
+				</button>
+			</div>
+			<div id="github-results" class="results-list hidden"></div>
+		</div>
+
+		<!-- 8. Chat Assistant -->
+		<div class="card" id="chat-section">
+			<h3>
+				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+					stroke-linejoin="round">
+					<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+				</svg>
+				Chat Assistant
+			</h3>
 			<div id="chat-container">
 				<div id="chat-messages"></div>
 				<div id="chat-input-wrapper">
-					<input type="text" id="chat-input" placeholder="Ask a question about this topic..." />
-					<button id="chat-send">Send</button>
+					<input type="text" id="chat-input" placeholder="Ask a question..." />
+					<button id="chat-send" class="icon-btn">
+						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+							stroke-linecap="round" stroke-linejoin="round">
+							<line x1="22" y1="2" x2="11" y2="13"></line>
+							<polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+						</svg>
+					</button>
 				</div>
 			</div>
 		</div>

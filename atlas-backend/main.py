@@ -6,6 +6,10 @@ import json
 from config import GEMINI_API_KEY
 from prompt import SYSTEM_PROMPT, CHAT_SYSTEM_PROMPT, build_prompt, build_chat_prompt
 import uvicorn
+import fitz
+import requests
+
+# ...existing code...
 
 # Initialize Gemini Client
 client = genai.Client(api_key=GEMINI_API_KEY)
@@ -45,6 +49,31 @@ class StruggleAnalysisRequest(BaseModel):
     page_text: str
     image: str = None  # Base64 encoded screenshot (optional)
     timestamp: int = None
+
+
+# --- GitHub Repo Search Endpoint ---
+class GithubSearchRequest(BaseModel):
+    query: str
+
+@app.post("/search-github")
+async def search_github(request: GithubSearchRequest):
+    url = "https://api.github.com/search/repositories"
+    params = {"q": request.query, "sort": "stars", "order": "desc", "per_page": 3}
+    headers = {"Accept": "application/vnd.github.v3+json"}
+    try:
+        response = requests.get(url, params=params, headers=headers, timeout=10)
+        data = response.json()
+        results = []
+        for item in data.get("items", []):
+            results.append({
+                "name": item.get("full_name"),
+                "description": item.get("description"),
+                "url": item.get("html_url")
+            })
+        return {"results": results}
+    except Exception as e:
+        print(f"[ATLAS] GitHub search error: {e}")
+        return {"error": str(e)}
 
 
 @app.post("/analyze")
@@ -108,6 +137,81 @@ async def analyze_page(request: AnalyzeRequest):
             }), "rate_limited": True}
         
         raise HTTPException(status_code=500, detail=str(e))
+
+from fastapi import UploadFile, File
+import fitz  # PyMuPDF
+
+@app.post("/analyze-pdf")
+async def analyze_pdf(file: UploadFile = File(...)):
+    """Extract text and a high-quality title from an uploaded PDF file."""
+    try:
+        print(f"[ATLAS] Extracting PDF: {file.filename}")
+        
+        # Read file contents into memory
+        pdf_bytes = await file.read()
+        
+        # Open PDF from memory bytes
+        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+        
+        # --- TITLE HEURISTIC HIERARCHY ---
+        title = ""
+        
+        # 1. Try Metadata
+        if doc.metadata and doc.metadata.get("title"):
+            title = doc.metadata.get("title").strip()
+        
+        # 2. Heuristic: Largest font on first page
+        if not title and len(doc) > 0:
+            try:
+                page = doc[0]
+                blocks = page.get_text("dict")["blocks"]
+                max_size = 0
+                candidate = ""
+                for b in blocks:
+                    if "lines" in b:
+                        for l in b["lines"]:
+                            for s in l["spans"]:
+                                if s["size"] > max_size:
+                                    max_size = s["size"]
+                                    candidate = s["text"].strip()
+                if candidate and len(candidate) > 5: # Threshold to avoid random large numbers
+                    title = candidate
+            except Exception as e:
+                print(f"[ATLAS] Heuristic Title Error: {e}")
+
+        # 3. Fallback: Clean Filename
+        if not title:
+            import urllib.parse
+            import re
+            raw_name = urllib.parse.unquote(file.filename)
+            # Remove long numeric strings (hashes/IDs) and .pdf extension
+            clean_name = re.sub(r'\b\d{5,}\b', '', raw_name)
+            clean_name = clean_name.replace('.pdf', '').replace('.PDF', '')
+            # Clean up extra dashes/underscores
+            clean_name = re.sub(r'[-_]{2,}', ' ', clean_name).replace('_', ' ').replace('-', ' ').strip()
+            title = clean_name if clean_name else "PDF Document"
+
+        text = ""
+        # Limit extraction to first 20 pages to avoid overwhelming the AI
+        max_pages = min(len(doc), 20)
+        
+        for page_num in range(max_pages):
+            page = doc[page_num]
+            page_text = page.get_text()
+            text += f"[Page {page_num + 1}]\n{page_text}\n\n"
+            
+        doc.close()
+        
+        print(f"[ATLAS] Successfully extracted {len(text)} characters. Final Title: {title}")
+        
+        return {
+            "title": title,
+            "text": text[:25000], 
+        }
+        
+    except Exception as e:
+        print(f"[ATLAS] PDF Extraction Error: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to extract PDF text: {str(e)}")
 
 
 
@@ -176,7 +280,7 @@ async def run_code(request: RunRequest):
         
         return {"result": output_buffer.getvalue()}
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": f"{type(e).__name__}: {str(e)}"}
 
 # --- GitHub RAG Search ---
 # Make chromadb optional due to pydantic v1 compatibility issues

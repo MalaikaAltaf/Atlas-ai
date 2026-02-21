@@ -75,8 +75,14 @@ You are adapting your analysis for a specific audience: **{level.upper()}**.
    - Root: Page Title (Center).
    - Children: The 5-7 most important SECTION HEADINGS from the page.
    - Do NOT use nested children (grandchildren). Keep it 1 level deep for clarity.
-6. Create a "Logic-Flow" flowchart using Mermaid JS syntax (graph TD) to explain the core logic/process.
-7. Provide a "Instant Playground" Python snippet that demonstrates the core concept. IMPORTANT: Do NOT use matplotlib or any plotting library. Use only print() for output. You may use numpy and math. The code must be self-contained, runnable, and produce printed text output.
+6. Create a "Logic-Flow" flowchart using Mermaid JS syntax to explain the core logic/process.
+   - MUST use exactly this format: graph TD; A[Start] --> B[Process]; B --> C[End];
+   - DO NOT wrap the output in ```mermaid ... ``` or any other markdown.
+   - Return raw Mermaid syntax only.
+ 7. Provide a "Instant Playground" Python snippet that demonstrates the core concept. IMPORTANT: Do NOT use matplotlib or any plotting library. Use only print() for output. You may use numpy and math. The code must be self-contained, runnable, and produce printed text output.
+   - ALWAYS use Raw Triple-Quoted f-strings (rf\"\"\"...\"\"\") for any multi-line strings or data extracted from the page.
+   - SANITIZE page text: If a string ends in a backslash (\), escape it (\\) or remove it to prevent premature escaping of the closing quote.
+   - COMPLETION PROMPTING: Ensure all function calls and math expressions are fully closed (check your parentheses () and brackets []). Use temporary variables for long expressions to keep lines short and readable.
 
 Return ONLY valid JSON:
 {{
@@ -95,8 +101,8 @@ Return ONLY valid JSON:
     {{ "type": "Video", "title": "Watch Videos on [Next Step]", "url": "https://www.youtube.com/results?search_query=[Next Step]" }},
     {{ "type": "Course", "title": "Find Courses on [Next Step]", "url": "https://www.coursera.org/search?query=[Next Step]" }}
   ],
-  "flowchart": "graph TD; A[Start] --> B[Process]; B --> C[End];",
-  "python_code": "import numpy as np\\nprint('Hello World')"
+  "flowchart": "graph TD;\\nA[Start] --> B[Process];\\nB --> C[End];",
+  "python_code": "import numpy as np\\n# Use rf\"\"\" for raw data\\npdf_text = rf\\\"\\\"\\\"Sample extracted text from {page_title}\\\"\\\"\\\"\\nprint(f\\\"\\\"\\\"Analysis: {{pdf_text[:50]}}...\\\"\\\"\\\")"
 }}
 """
 

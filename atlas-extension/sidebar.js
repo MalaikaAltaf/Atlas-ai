@@ -306,39 +306,98 @@ function setRateLimited(seconds) {
 	console.log(`[Atlas AI] Rate limited for ${seconds} seconds`);
 }
 
+/**
+ * Extract PDF Content Directly (Bypasses content script limitations)
+ */
+async function extractPdfDirectly(url) {
+	try {
+		console.log("[Atlas AI] Sidebar fetching PDF blob...");
+
+		const response = await fetch(url);
+		if (!response.ok) {
+			if (url.startsWith("file://")) {
+				throw new Error("Cannot access local file. Ensure 'Allow access to file URLs' is enabled in Extension Settings.");
+			}
+			throw new Error(`Failed to fetch PDF: ${response.status}`);
+		}
+
+		const blob = await response.blob();
+		const formData = new FormData();
+
+		// Determine a filename
+		let filename = "document.pdf";
+		try {
+			const urlObj = new URL(url);
+			filename = urlObj.pathname.split('/').pop() || "document.pdf";
+		} catch (e) { }
+
+		formData.append("file", blob, filename);
+
+		console.log("[Atlas AI] Sending PDF to backend from sidebar...");
+		const bgResponse = await fetch("http://localhost:8000/analyze-pdf", {
+			method: "POST",
+			body: formData
+		});
+
+		if (!bgResponse.ok) {
+			throw new Error(`PDF extraction failed: ${bgResponse.status}`);
+		}
+
+		const result = await bgResponse.json();
+		return {
+			title: filename,
+			url: url,
+			text: result.text,
+			type: "pdf"
+		};
+
+	} catch (e) {
+		console.error("[Atlas AI] Sidebar PDF extraction error:", e);
+		throw e;
+	}
+}
+
 async function fetchAndDisplay(tabUrl, tabId) {
 	try {
 		// Get page content
 		let content;
-		try {
-			content = await new Promise((resolve, reject) => {
-				const timeout = setTimeout(() => reject(new Error("Content timeout")), 5000);
-				chrome.tabs.sendMessage(tabId, { type: "GET_CURRENT_CONTENT" }, (response) => {
-					clearTimeout(timeout);
-					if (chrome.runtime.lastError) {
-						reject(new Error("Cannot access page via message"));
-					} else {
-						resolve(response);
+
+		// PDF DETECTION (Direct fetching from sidebar)
+		if (tabUrl.toLowerCase().endsWith(".pdf") || tabUrl.toLowerCase().includes(".pdf?")) {
+			console.log("[Atlas AI] PDF detected via URL. Extracting directly from sidebar...");
+			content = await extractPdfDirectly(tabUrl);
+		} else {
+			// Regular page content extraction
+			try {
+				content = await new Promise((resolve, reject) => {
+					const timeout = setTimeout(() => reject(new Error("Content timeout")), 5000);
+					chrome.tabs.sendMessage(tabId, { type: "GET_CURRENT_CONTENT" }, (response) => {
+						clearTimeout(timeout);
+						if (chrome.runtime.lastError) {
+							reject(new Error("Cannot access page via message"));
+						} else {
+							resolve(response);
+						}
+					});
+				});
+			} catch (msgError) {
+				console.warn("[Atlas AI] Messaging failed, trying direct injection:", msgError);
+				// Fallback: Execute script directly
+				const results = await chrome.scripting.executeScript({
+					target: { tabId: tabId },
+					func: () => {
+						return {
+							title: document.title,
+							text: document.body.innerText.slice(0, 8000),
+							url: window.location.href
+						};
 					}
 				});
-			});
-		} catch (msgError) {
-			console.warn("[Atlas AI] Messaging failed, trying direct injection:", msgError);
-			// Fallback: Execute script directly
-			const results = await chrome.scripting.executeScript({
-				target: { tabId: tabId },
-				func: () => {
-					return {
-						title: document.title,
-						text: document.body.innerText.slice(0, 8000),
-						url: window.location.href
-					};
+				if (results && results[0] && results[0].result) {
+					content = results[0].result;
+				} else {
+					throw new Error("Failed to extract content via injection");
 				}
-			});
-			if (results && results[0] && results[0].result) {
-				content = results[0].result;
-			} else {
-				throw new Error("Failed to extract content via injection");
 			}
 		}
 
@@ -562,25 +621,7 @@ function displayAnalysis(analysisData, progress) {
 	const flowContainer = document.getElementById('logic-flow-container');
 	if (analysisData.flowchart && flowSection && flowContainer) {
 		flowSection.classList.remove('hidden');
-		flowContainer.innerHTML = '<p style="opacity:0.6">Loading flowchart...</p>';
-		const graphDef = analysisData.flowchart;
-		// Use Kroki POST endpoint - sends plain text, no encoding needed
-		fetch('https://kroki.io/mermaid/svg', {
-			method: 'POST',
-			headers: { 'Content-Type': 'text/plain' },
-			body: graphDef
-		})
-			.then(res => {
-				if (!res.ok) throw new Error('Kroki error: ' + res.status);
-				return res.text();
-			})
-			.then(svg => {
-				flowContainer.innerHTML = svg;
-			})
-			.catch(err => {
-				console.error('[Atlas AI] Flowchart render error:', err);
-				flowContainer.innerHTML = '<p style="color:#f56565;">Could not render flowchart.</p>';
-			});
+		renderFlowchart(analysisData.flowchart, flowContainer);
 	} else if (flowSection) {
 		flowSection.classList.add('hidden');
 	}
@@ -606,6 +647,15 @@ function displayAnalysis(analysisData, progress) {
 	// Updated: Render Resources
 	if (analysisData.resources) {
 		renderResources(analysisData.resources);
+	}
+
+	// Ensure Logic Flow section is visible if data exists, but content remains collapsed by default
+	if (analysisData.flowchart && flowSection) {
+		const flowContent = document.getElementById('logic-flow-content');
+		if (flowContent) {
+			flowContent.classList.add('collapsed');
+			flowContent.classList.remove('expanded');
+		}
 	}
 }
 
@@ -640,7 +690,7 @@ function renderMindmap(mindmapData) {
 	function processNode(node, parent, level) {
 		const flatNode = {
 			id: `n_${nodes.length}`,
-			name: node.name,
+			name: node.isRoot && node.name.length > 30 ? node.name.substring(0, 27) + "..." : node.name,
 			// Initial Placement: Star Burst
 			x: parent ? parent.x + (Math.random() - 0.5) * 50 : width / 2,
 			y: parent ? parent.y + (Math.random() - 0.5) * 50 : height / 2,
@@ -669,9 +719,10 @@ function renderMindmap(mindmapData) {
 
 	// Create visual elements
 	links.forEach(link => {
-		const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-		line.setAttribute('stroke', '#4a5568');
-		line.setAttribute('stroke-width', '2');
+		const line = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+		line.setAttribute('stroke', 'rgba(139, 92, 246, 0.2)');
+		line.setAttribute('stroke-width', '1.5');
+		line.setAttribute('fill', 'none');
 		link.el = line;
 		linkGroup.appendChild(line);
 	});
@@ -680,16 +731,18 @@ function renderMindmap(mindmapData) {
 		const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
 		g.style.cursor = 'grab';
 
-		const brightness = Math.max(40, 79 - node.level * 10);
-		const color = node.isRoot ? '#4fd1c5' : `rgb(${brightness}, ${brightness + 10}, ${brightness + 20})`;
-		const textColor = node.isRoot ? '#1a202c' : '#e2e8f0';
+		// Pro-Consumer Colors
+		const color = node.isRoot ? '#8B5CF6' : 'rgba(139, 92, 246, 0.1)';
+		const textColor = node.isRoot ? '#FFFFFF' : '#D1D5DB';
+		const strokeColor = node.isRoot ? '#7C3AED' : 'rgba(139, 92, 246, 0.3)';
 
 		const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
 		text.setAttribute('text-anchor', 'middle');
 		text.setAttribute('fill', textColor);
-		text.setAttribute('font-size', Math.max(11, 14 - node.level));
-		text.setAttribute('dy', '0.35em'); // Center vertically
-		text.setAttribute('pointer-events', 'none'); // Let clicks pass to rect
+		text.setAttribute('font-size', '11px');
+		text.setAttribute('font-family', 'Inter, sans-serif');
+		text.setAttribute('dy', '0.35em');
+		text.setAttribute('pointer-events', 'none');
 
 		// Text Wrapping (Simple)
 		const words = node.name.split(' ');
@@ -700,24 +753,24 @@ function renderMindmap(mindmapData) {
 		}
 
 		// Measure text
-		const fontSize = Math.max(11, 14 - node.level);
+		const fontSize = 11;
 		const charWidth = fontSize * 0.6;
-		const textWidth = Math.max(80, text.textContent.length * charWidth + 24);
+		const textWidth = Math.max(80, text.textContent.length * charWidth + 32);
 
 		node.width = textWidth;
-		node.height = Math.max(30, 40 - node.level * 2);
+		node.height = 32;
 
-		// Store radius for collision (effective radius approx half width)
 		node.radius = Math.max(node.width, node.height) / 2;
 
 		const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-		rect.setAttribute('rx', node.height / 2); // Pill shape
-		rect.setAttribute('ry', node.height / 2);
+		rect.setAttribute('rx', '16'); // Fully rounded pill
+		rect.setAttribute('ry', '16');
 		rect.setAttribute('fill', color);
-		rect.setAttribute('stroke', '#4fd1c5');
-		rect.setAttribute('stroke-width', node.isRoot ? '2' : '1');
+		rect.setAttribute('stroke', strokeColor);
+		rect.setAttribute('stroke-width', '1');
 		rect.setAttribute('width', node.width);
 		rect.setAttribute('height', node.height);
+		rect.style.transition = 'all 0.2s ease';
 
 		g.appendChild(rect);
 		g.appendChild(text);
@@ -729,6 +782,14 @@ function renderMindmap(mindmapData) {
 
 		// Interactivity
 		g.addEventListener('mousedown', (e) => onDragStart(e, node, svg));
+		g.addEventListener('mouseenter', () => {
+			rect.setAttribute('stroke-width', '2');
+			rect.setAttribute('fill', node.isRoot ? '#7C3AED' : 'rgba(139, 92, 246, 0.2)');
+		});
+		g.addEventListener('mouseleave', () => {
+			rect.setAttribute('stroke-width', '1');
+			rect.setAttribute('fill', color);
+		});
 	});
 
 	// 3. Start Simulation
@@ -863,10 +924,13 @@ class SimpleForceSimulation {
 
 	draw() {
 		this.links.forEach(link => {
-			link.el.setAttribute('x1', link.source.x);
-			link.el.setAttribute('y1', link.source.y);
-			link.el.setAttribute('x2', link.target.x);
-			link.el.setAttribute('y2', link.target.y);
+			const s = link.source;
+			const t = link.target;
+			// Smooth Bezier Curve Connectors
+			const dx = t.x - s.x;
+			const dy = t.y - s.y;
+			const dr = Math.sqrt(dx * dx + dy * dy) * 1.5;
+			link.el.setAttribute('d', `M${s.x},${s.y}A${dr},${dr} 0 0,1 ${t.x},${t.y}`);
 		});
 
 		this.nodes.forEach(node => {
@@ -943,13 +1007,13 @@ function renderResources(resources) {
 		link.target = "_blank";
 		link.className = "resource-item";
 
-		let icon = '📄';
-		if (res.type === 'Video') icon = '📺';
-		if (res.type === 'Course') icon = '🎓';
+		let iconSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><polyline points="13 2 13 9 20 9"></polyline></svg>';
+		if (res.type === 'Video') iconSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>';
+		if (res.type === 'Course') iconSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10v6M2 10l10-5 10 5-10 5z"></path><path d="M6 12v5c3 3 9 3 12 0v-5"></path></svg>';
 
 		const iconSpan = document.createElement('span');
 		iconSpan.className = "resource-icon";
-		iconSpan.textContent = icon;
+		iconSpan.innerHTML = iconSvg;
 
 		const titleSpan = document.createElement('span');
 		titleSpan.className = "resource-title";
@@ -1052,7 +1116,98 @@ async function launchQuiz(progress) {
 	}
 }
 
-async function completeLevelUp(progress) {
+/**
+ * Sanitize Mermaid Syntax
+ */
+function sanitizeMermaid(def) {
+	if (!def) return '';
+	let sanitized = def.replace(/\\n/g, '\n');
+
+	// Fix common AI syntax errors for Kroki/Mermaid
+	// 1. Ensure node labels with special characters are quoted
+	// Matches: A[Some (Text) Here] -> A["Some (Text) Here"]
+	sanitized = sanitized.replace(/([A-Za-z0-9_-]+)\[([^"\]]+)\]/g, (match, id, label) => {
+		if (label.includes('(') || label.includes(')') || label.includes('[') || label.includes(']') || label.includes(',') || label.includes('.')) {
+			return `${id}["${label}"]`;
+		}
+		return match;
+	});
+
+	// 2. Remove any markdown code blocks if the AI ignored the prompt
+	sanitized = sanitized.replace(/```mermaid/g, '').replace(/```/g, '');
+
+	return sanitized.trim();
+}
+
+/**
+ * Render Flowchart with Retry and Fallback
+ */
+function renderFlowchart(graphDef, container, retryCount = 0) {
+	if (!graphDef || !container) return;
+
+	container.innerHTML = '<p style="opacity:0.6">Loading flowchart...</p>';
+	const sanitized = sanitizeMermaid(graphDef);
+
+	fetch('https://kroki.io/mermaid/svg', {
+		method: 'POST',
+		headers: { 'Content-Type': 'text/plain' },
+		body: sanitized
+	})
+		.then(res => {
+			if (!res.ok) throw new Error('Kroki error: ' + res.status);
+			return res.text();
+		})
+		.then(svg => {
+			container.innerHTML = svg;
+		})
+		.catch(err => {
+			console.error(`[Atlas AI] Flowchart attempt ${retryCount + 1} failed:`, err);
+			if (retryCount < 1) {
+				// Retry once after 200ms
+				setTimeout(() => renderFlowchart(graphDef, container, retryCount + 1), 200);
+			} else {
+				renderFlowchartFallback(sanitized, container);
+			}
+		});
+}
+
+/**
+ * Fallback UI for Flowchart (Step-by-Step list)
+ */
+function renderFlowchartFallback(def, container) {
+	console.log("[Atlas AI] Rendering flowchart fallback list");
+	// Simple parser for "A --> B" patterns
+	const steps = [];
+	const lines = def.split('\n');
+
+	lines.forEach(line => {
+		// Extract labels from A[Label] or A["Label"]
+		const match = line.match(/\["?(.*?)"?\]/);
+		if (match && match[1]) {
+			if (!steps.includes(match[1])) steps.push(match[1]);
+		}
+	});
+
+	if (steps.length > 0) {
+		container.innerHTML = `
+			<div style="padding: 1rem; border-left: 2px solid var(--primary); background: rgba(139, 92, 246, 0.05);">
+				<p style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); margin-bottom: 8px;">Simplified Process Flow</p>
+				<ul style="list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px;">
+					${steps.map((step, i) => `
+						<li style="display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--text-main);">
+							<span style="width: 20px; height: 20px; border-radius: 50%; background: var(--primary); color: white; display: flex; align-items: center; justify-content: center; font-size: 10px; flex-shrink: 0;">${i + 1}</span>
+							${step}
+						</li>
+					`).join('')}
+				</ul>
+			</div>
+		`;
+	} else {
+		container.innerHTML = '<p style="color:#f56565; padding: 1rem; font-size: 13px;">Logic Flow unavailable for this content.</p>';
+	}
+}
+
+function completeLevelUp(progress) {
 	const currentIndex = progress.curriculum.indexOf(progress.currentTopic);
 	if (currentIndex < progress.curriculum.length - 1) {
 		const nextTopic = progress.curriculum[currentIndex + 1];
@@ -1074,6 +1229,109 @@ async function completeLevelUp(progress) {
 			});
 		});
 	}
+}
+
+/**
+ * Cleanup Python Code (Fix common quoting issues)
+ */
+function cleanupPythonCode(code) {
+	if (!code) return '';
+	let clean = code;
+
+	const lines = clean.split('\n');
+	const fixedLines = lines.map(line => {
+		const fDoubleMatch = (line.match(/f"/g) || []).length;
+		if (fDoubleMatch > 0) {
+			const dQuoteCount = (line.match(/"/g) || []).length;
+			if ((dQuoteCount - fDoubleMatch) % 2 !== 0) {
+				return line + '"';
+			}
+		}
+		const fSingleMatch = (line.match(/f'/g) || []).length;
+		if (fSingleMatch > 0) {
+			const sQuoteCount = (line.match(/'/g) || []).length;
+			if ((sQuoteCount - fSingleMatch) % 2 !== 0) {
+				return line + "'";
+			}
+		}
+		return line;
+	});
+
+	return fixedLines.join('\n');
+}
+
+/**
+ * Safe Clean Python Code (Aggressive fix for SyntaxErrors in PDF data)
+ */
+function safeCleanPythonCode(code) {
+	if (!code) return '';
+	let clean = code;
+
+	// 1. Strip trailing backslashes before quotes to prevent escaping the closer
+	// Matches: text = """...\" or text = rf"""...\"
+	// We replace \ before """ with \\
+	clean = clean.replace(/\\+(\"\"\"|\'\'\')/g, (match, quotes) => {
+		const slashes = match.slice(0, -3);
+		if (slashes.length % 2 !== 0) {
+			return slashes + '\\' + quotes;
+		}
+		return match;
+	});
+
+	// 2. Aggressive char removal if the above fails (handled by the caller's retry logic if needed)
+	// For the initial "Safe Clean", we'll just focus on the backslash issue and quoting balance
+
+	const tripleQuoteCount = (clean.match(/(\"\"\"|\'\'\')/g) || []).length;
+	if (tripleQuoteCount % 2 !== 0) {
+		clean += '\n"""';
+	}
+
+	return clean;
+}
+
+/**
+ * Balance Brackets & Parentheses
+ */
+function balanceBrackets(code) {
+	if (!code) return '';
+	let clean = code;
+	const pairs = { '(': ')', '[': ']', '{': '}' };
+	const stack = [];
+
+	for (let char of clean) {
+		if (pairs[char]) {
+			stack.push(char);
+		} else if (Object.values(pairs).includes(char)) {
+			const last = stack[stack.length - 1];
+			if (pairs[last] === char) {
+				stack.pop();
+			}
+		}
+	}
+
+	// Close unclosed brackets in reverse order
+	while (stack.length > 0) {
+		const open = stack.pop();
+		clean += pairs[open];
+	}
+
+	return clean;
+}
+
+/**
+ * Safe Correct Python Code (Stripping last line on SyntaxError)
+ */
+function safeCorrectPythonCode(code) {
+	if (!code) return '';
+	const lines = code.trimEnd().split('\n');
+	if (lines.length <= 1) return code;
+
+	console.log("[Atlas AI] Safe Correction: Stripping last potentially incomplete line");
+	// Remove the last line (likely incomplete math or call)
+	const stripped = lines.slice(0, -1).join('\n');
+
+	// Ensure we close any leftover triple quotes or brackets
+	return balanceBrackets(safeCleanPythonCode(stripped));
 }
 
 /**
@@ -1129,13 +1387,47 @@ window.addEventListener("DOMContentLoaded", () => {
 			output.textContent = "Running...";
 			output.classList.remove('hidden');
 
+			let codeToRun = editor.value;
+
 			try {
-				const response = await fetch("http://localhost:8000/run", {
+				let response = await fetch("http://localhost:8000/run", {
 					method: "POST",
 					headers: { "Content-Type": "application/json" },
-					body: JSON.stringify({ code: editor.value })
+					body: JSON.stringify({ code: codeToRun })
 				});
-				const data = await response.json();
+				let data = await response.json();
+
+				// AUTOMATIC CODE CLEANUP on SyntaxError
+				if (data.error && (data.error.includes("SyntaxError") || data.error.includes("unterminated") || data.error.includes("EOF") || data.error.includes("never closed"))) {
+					console.log("[Atlas AI] Syntax error detected, attempting safe-cleanup...");
+
+					let cleanedCode = cleanupPythonCode(codeToRun);
+
+					if (cleanedCode === codeToRun || data.error.includes("unterminated")) {
+						cleanedCode = safeCleanPythonCode(codeToRun);
+					}
+
+					// BRACKET BALANCING PASS
+					cleanedCode = balanceBrackets(cleanedCode);
+
+					// AGGRESSIVE FALLBACK (Self-Correction) if standard fix fails to change code
+					if (cleanedCode === codeToRun && data.error.includes("never closed")) {
+						cleanedCode = safeCorrectPythonCode(codeToRun);
+					}
+
+					if (cleanedCode !== codeToRun) {
+						codeToRun = cleanedCode;
+						editor.value = codeToRun;
+
+						response = await fetch("http://localhost:8000/run", {
+							method: "POST",
+							headers: { "Content-Type": "application/json" },
+							body: JSON.stringify({ code: codeToRun })
+						});
+						data = await response.json();
+					}
+				}
+
 				output.textContent = data.result || data.error || "No output";
 			} catch (e) {
 				output.textContent = "Error: " + e.message;
@@ -1143,7 +1435,49 @@ window.addEventListener("DOMContentLoaded", () => {
 		});
 	}
 
-	// GitHub Search Button
+	// Copy Playground Logic
+	const copyBtn = document.getElementById('copy-playground-btn');
+	if (copyBtn) {
+		copyBtn.addEventListener('click', () => {
+			const editor = document.getElementById('python-editor');
+			if (editor) {
+				navigator.clipboard.writeText(editor.value).then(() => {
+					copyBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
+					setTimeout(() => {
+						copyBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>';
+					}, 2000);
+				});
+			}
+		});
+	}
+
+	// Logic Flow Toggle
+	const toggleFlowBtn = document.getElementById('toggle-flow-btn');
+	const flowContent = document.getElementById('logic-flow-content');
+	if (toggleFlowBtn && flowContent) {
+		toggleFlowBtn.addEventListener('click', () => {
+			const isCollapsed = flowContent.classList.toggle('collapsed');
+			flowContent.classList.toggle('expanded', !isCollapsed);
+			toggleFlowBtn.style.transform = isCollapsed ? 'rotate(0deg)' : 'rotate(180deg)';
+		});
+	}
+
+	const viewFullBtn = document.getElementById('view-full-diagram');
+	if (viewFullBtn) {
+		viewFullBtn.addEventListener('click', () => {
+			// Open the SVG in a new tab for "Full View"
+			const svg = document.querySelector('#logic-flow-container svg');
+			if (svg) {
+				const svgData = new XMLSerializer().serializeToString(svg);
+				const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
+				const url = URL.createObjectURL(svgBlob);
+				window.open(url, '_blank');
+			}
+		});
+	}
+
+
+	// GitHub Repo Search Button (NEW)
 	const ghSearchBtn = document.getElementById('github-search-btn');
 	if (ghSearchBtn) {
 		ghSearchBtn.addEventListener('click', async () => {
@@ -1154,11 +1488,11 @@ window.addEventListener("DOMContentLoaded", () => {
 			const query = input.value.trim();
 			if (!query) return;
 
-			resultsContainer.innerHTML = '<div class="result-item">Searching vector index...</div>';
+			resultsContainer.innerHTML = '<div class="result-item">Searching GitHub repositories...</div>';
 			resultsContainer.classList.remove('hidden');
 
 			try {
-				const response = await fetch("http://localhost:8000/search-code", {
+				const response = await fetch("http://localhost:8000/search-github", {
 					method: "POST",
 					headers: { "Content-Type": "application/json" },
 					body: JSON.stringify({ query: query })
@@ -1168,31 +1502,44 @@ window.addEventListener("DOMContentLoaded", () => {
 				resultsContainer.innerHTML = '';
 
 				if (data.results && data.results.length > 0) {
-					data.results.forEach(res => {
-						const div = document.createElement('div');
-						div.className = 'result-item';
-						div.innerHTML = `
-							<div class="result-header">
-								<span>${res.name} (${res.type})</span>
-								<a href="${res.url || '#'}" target="_blank">View File</a>
-							</div>
-							<div class="result-snippet">${res.snippet.substring(0, 150)}...</div>
-						`;
-						resultsContainer.appendChild(div);
+					data.results.forEach(repo => {
+						// Only render if the URL is a real GitHub repo link
+						if (repo.url && repo.url.startsWith('https://github.com/')) {
+							const div = document.createElement('div');
+							div.className = 'result-item';
+							div.innerHTML = `
+								<div class="result-header">
+									<a href="${repo.url}" target="_blank" style="font-weight:bold; color:#2b6cb0; text-decoration:underline;">${repo.name}</a>
+								</div>
+								<div class="result-snippet">${repo.description ? repo.description : ''}</div>
+							`;
+							resultsContainer.appendChild(div);
+						}
 					});
+					// Force all GitHub links to open in a new tab (not in the sidebar)
+					resultsContainer.querySelectorAll('a[target="_blank"]').forEach(link => {
+						link.addEventListener('click', function (e) {
+							e.preventDefault();
+							window.open(this.href, '_blank');
+						});
+					});
+					// If no valid GitHub links were rendered
+					if (!resultsContainer.hasChildNodes()) {
+						resultsContainer.innerHTML = '<div class="result-item">No valid GitHub repositories found.</div>';
+					}
 				} else {
-					resultsContainer.innerHTML = '<div class="result-item">No code matches found.</div>';
+					resultsContainer.innerHTML = '<div class="result-item">No GitHub repositories found.</div>';
 				}
 
 			} catch (e) {
-				resultsContainer.innerHTML = '<div class="result-item">Error searching code. Is indexer running?</div>';
+				resultsContainer.innerHTML = '<div class="result-item">Error searching GitHub. Please try again.</div>';
 			}
 		});
 	}
 
 	// Initialize difficulty toggle (lightweight, doesn't block)
 	initializeDifficultyToggle();
-	
+
 	// DEFER: Use requestAnimationFrame to defer analysis to next frame
 	// This makes sidebar UI appear instantly instead of waiting for backend
 	requestAnimationFrame(() => {

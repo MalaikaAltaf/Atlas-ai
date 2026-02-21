@@ -1,42 +1,39 @@
-// Helper to load PDF.js dynamically
-async function loadPdfJs() {
-  if (window.pdfjsLib) return;
-
-  const src = chrome.runtime.getURL("lib/pdf.min.js");
-  await new Promise((resolve, reject) => {
-    const script = document.createElement("script");
-    script.src = src;
-    script.onload = resolve;
-    script.onerror = reject;
-    document.head.appendChild(script);
-  });
-
-  // Set worker source
-  window.pdfjsLib.GlobalWorkerOptions.workerSrc = chrome.runtime.getURL("lib/pdf.worker.min.js");
-}
-
+// PDF Extraction via Backend
 async function extractPdfContent() {
   try {
-    await loadPdfJs();
+    console.log("[Atlas AI] Downloading PDF for backend extraction...");
 
-    const loadingTask = pdfjsLib.getDocument(window.location.href);
-    const pdf = await loadingTask.promise;
-    let fullText = "";
-
-    // Limit to first 10 pages to avoid performance issues
-    const maxPages = Math.min(pdf.numPages, 10);
-
-    for (let i = 1; i <= maxPages; i++) {
-      const page = await pdf.getPage(i);
-      const textContent = await page.getTextContent();
-      const pageText = textContent.items.map(item => item.str).join(" ");
-      fullText += `[Page ${i}]\n${pageText}\n\n`;
+    // Fetch the PDF natively (uses browser cookies/auth so paywalled papers work!)
+    const response = await fetch(window.location.href);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch PDF: ${response.status}`);
     }
 
+    const blob = await response.blob();
+
+    console.log("[Atlas AI] Sending PDF to backend...");
+    const formData = new FormData();
+    const filename = document.title || "document.pdf";
+    // Clean filename as some titles contain illegal chars
+    formData.append("file", blob, filename.replace(/[/\\?%*:|"<>]/g, '-'));
+
+    const bgResponse = await fetch("http://localhost:8000/analyze-pdf", {
+      method: "POST",
+      body: formData // Note: Do NOT set Content-Type header when using FormData
+    });
+
+    if (!bgResponse.ok) {
+      throw new Error(`Backend PDF extraction failed: ${bgResponse.status}`);
+    }
+
+    const result = await bgResponse.json();
+
+    console.log(`[Atlas AI] Extracted ${result.text.length} characters from PDF.`);
+
     return {
-      title: document.title || "PDF Document",
+      title: result.title || document.title || "PDF Document",
       url: window.location.href,
-      text: fullText.slice(0, 15000), // Increased limit for PDFs
+      text: result.text,
       timestamp: Date.now(),
       type: "pdf"
     };
@@ -44,18 +41,19 @@ async function extractPdfContent() {
   } catch (e) {
     console.error("[Atlas AI] PDF Extraction failed:", e);
     return {
-      title: document.title,
+      title: document.title || "PDF Document",
       url: window.location.href,
-      text: "Error extracting PDF text. Please ensure this is a valid PDF.",
-      timestamp: Date.now()
+      text: "Error extracting PDF text: " + e.message + "\n\nMake sure the backend is running and the PDF is accessible.",
+      timestamp: Date.now(),
+      type: "pdf" // So frontend logic handles it
     };
   }
 }
 
 async function extractContent() {
   // Check if PDF
-  if (document.contentType === "application/pdf" || window.location.href.endsWith(".pdf")) {
-    console.log("[Atlas AI] Detected PDF. Extracting text...");
+  if (document.contentType === "application/pdf" || window.location.href.toLowerCase().endsWith(".pdf")) {
+    console.log("[Atlas AI] Detected PDF. Extracting text via backend...");
     return await extractPdfContent();
   }
 
@@ -99,11 +97,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
 async function analyzeStruggle(data) {
   console.log("[WHISPER] Analyzing struggle:", data.trigger);
-  
+
   try {
     // Get page title only - super simple
     const title = document.title || "Learning";
-    
+
     // Quick hardcoded hints (no backend call needed)
     const hints = {
       "rage_click": {
@@ -123,38 +121,38 @@ async function analyzeStruggle(data) {
         confidence: 0.90
       }
     };
-    
+
     const hint = hints[data.trigger] || {
       text: "Take a moment and try a different approach.",
       confidence: 0.60
     };
-    
+
     // Try to get backend hint (optional - don't block if fails)
     try {
       const response = await fetch("http://localhost:8000/analyze-struggle", {
         method: "POST",
-        headers: {"Content-Type": "application/json"},
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           trigger: data.trigger,
           page_title: title,
           page_text: "User learning content"
         })
       });
-      
+
       if (response.ok) {
         const result = await response.json();
         console.log("[WHISPER] Backend hint received:", result.hint);
         showWhisper(result.hint, result.confidence, data.trigger);
         return;
       }
-    } catch(e) {
+    } catch (e) {
       console.log("[WHISPER] Backend unavailable, using fallback");
     }
-    
+
     // Use hardcoded hint
     showWhisper(hint.text, hint.confidence, data.trigger);
-    
-  } catch(error) {
+
+  } catch (error) {
     console.error("[WHISPER] Error:", error);
     showWhisper("You seem stuck. Try a different approach.", 0.5, data.trigger);
   }
@@ -162,11 +160,11 @@ async function analyzeStruggle(data) {
 
 function showWhisper(hint, confidence, trigger) {
   console.log("[WHISPER] Showing toast with hint");
-  
+
   // Remove old whisper
   const old = document.getElementById("atlas-whisper-toast");
   if (old) old.remove();
-  
+
   // Create whisper
   const whisper = document.createElement("div");
   whisper.id = "atlas-whisper-toast";
@@ -187,7 +185,7 @@ function showWhisper(hint, confidence, trigger) {
     ">
       <div style="font-size: 20px; margin-bottom: 8px;">💡 Looks like you're stuck</div>
       <div style="font-size: 13px; line-height: 1.4; margin-bottom: 8px;">${hint}</div>
-      <div style="font-size: 11px; opacity: 0.8;">Confidence: ${(confidence*100).toFixed(0)}%</div>
+      <div style="font-size: 11px; opacity: 0.8;">Confidence: ${(confidence * 100).toFixed(0)}%</div>
     </div>
     <style>
       @keyframes atlas-toast-in {
@@ -199,10 +197,10 @@ function showWhisper(hint, confidence, trigger) {
       }
     </style>
   `;
-  
+
   document.body.appendChild(whisper);
   console.log("[WHISPER] Toast added to DOM");
-  
+
   // Auto-remove after 7 seconds
   setTimeout(() => {
     whisper.style.animation = "atlas-toast-out 0.4s ease-out forwards";
