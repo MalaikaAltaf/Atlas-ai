@@ -9,12 +9,7 @@
 
 ---
 
-## 📸 Project Showcase
 
-| Sidebar Interface | AI Mindmap Logic | Mastery Quiz |
-| :---: | :---: | :---: |
-| ![Extension Screenshot](./assets/extension.png) | ![Sidebar Screenshot](p./assets/extension2.png) | 
-| *Adaptive AI Summaries* | *Visual Concept Mapping* | *The Knowledge Gate* |
 
 ---
 
