@@ -265,8 +265,6 @@ button {
     max-height: 1000px;
 }
 
-/* Mindmap & Flowchart Visual Style */
-#mindmap-container,
 .flowchart-container {
     background: rgba(0, 0, 0, 0.4);
     border-radius: var(--radius-md);

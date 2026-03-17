@@ -146,7 +146,7 @@ async function sendChatMessage(userMessage, pageContent) {
 
 	try {
 		// Call backend chat API
-		const response = await fetch("http://localhost:8000/chat", {
+		const response = await fetch("http://localhost:8001/chat", {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({
@@ -217,22 +217,33 @@ function initializeChatListeners(pageContent) {
 		return; // Not ready
 	}
 
-	// Remove old listeners by cloning
+	// Remove all previous event listeners by replacing with clone (for both send and input)
 	const newChatSend = chatSend.cloneNode(true);
 	chatSend.parentNode.replaceChild(newChatSend, chatSend);
+	const newChatInput = chatInput.cloneNode(true);
+	chatInput.parentNode.replaceChild(newChatInput, chatInput);
+
+	let enterPressed = false;
 
 	newChatSend.addEventListener('click', () => {
-		if (chatInput.value.trim()) {
-			sendChatMessage(chatInput.value, pageContent);
+		if (newChatInput.value.trim()) {
+			sendChatMessage(newChatInput.value, pageContent);
 		}
 	});
 
-	chatInput.addEventListener('keypress', (e) => {
+	newChatInput.addEventListener('keydown', (e) => {
 		if (e.key === 'Enter' && !e.shiftKey) {
 			e.preventDefault();
-			if (chatInput.value.trim()) {
-				sendChatMessage(chatInput.value, pageContent);
+			if (!enterPressed && newChatInput.value.trim()) {
+				enterPressed = true;
+				sendChatMessage(newChatInput.value, pageContent);
 			}
+		}
+	});
+
+	newChatInput.addEventListener('keyup', (e) => {
+		if (e.key === 'Enter') {
+			enterPressed = false;
 		}
 	});
 }
@@ -334,7 +345,7 @@ async function extractPdfDirectly(url) {
 		formData.append("file", blob, filename);
 
 		console.log("[Atlas AI] Sending PDF to backend from sidebar...");
-		const bgResponse = await fetch("http://localhost:8000/analyze-pdf", {
+		const bgResponse = await fetch("http://localhost:8001/analyze-pdf", {
 			method: "POST",
 			body: formData
 		});
@@ -388,7 +399,7 @@ async function fetchAndDisplay(tabUrl, tabId) {
 					func: () => {
 						return {
 							title: document.title,
-							text: document.body.innerText.slice(0, 8000),
+							text: document.body.innerText.slice(0, 8001),
 							url: window.location.href
 						};
 					}
@@ -412,7 +423,7 @@ async function fetchAndDisplay(tabUrl, tabId) {
 		if (summaryEl) summaryEl.textContent = "🔄 Analyzing with AI...";
 
 		// Fetch analysis from backend
-		const response = await fetch("http://localhost:8000/analyze", {
+		const response = await fetch("http://localhost:8001/analyze", {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({
@@ -494,7 +505,7 @@ async function refreshAnalysisInBackground(tabUrl, tabId) {
 				func: () => {
 					return {
 						title: document.title,
-						text: document.body.innerText.slice(0, 8000)
+						text: document.body.innerText.slice(0, 8001)
 					};
 				}
 			});
@@ -504,7 +515,7 @@ async function refreshAnalysisInBackground(tabUrl, tabId) {
 		currentContent = content;
 
 		// Fetch fresh analysis
-		const response = await fetch("http://localhost:8000/analyze", {
+		const response = await fetch("http://localhost:8001/analyze", {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({
@@ -626,16 +637,6 @@ function displayAnalysis(analysisData, progress) {
 		flowSection.classList.add('hidden');
 	}
 
-	// Updated: Render Playground
-	const playSection = document.getElementById('playground-section');
-	const editor = document.getElementById('python-editor');
-	if (analysisData.python_code && playSection && editor) {
-		playSection.classList.remove('hidden');
-		// Unescape \\n sequences that the AI may return as literal text
-		editor.value = analysisData.python_code.replace(/\\n/g, '\n');
-	} else if (playSection) {
-		playSection.classList.add('hidden');
-	}
 
 	// Updated: Render Mindmap - DEFER to avoid blocking UI
 	if (analysisData.mindmap) {
@@ -668,321 +669,30 @@ function displayAnalysis(analysisData, progress) {
 let simulation = null; // Store simulation instance
 
 function renderMindmap(mindmapData) {
-	const svg = document.getElementById('mindmap-svg');
-	if (!svg) return;
+	const statusEl = document.getElementById('mindmap-status');
+	const btn = document.getElementById('view-mindmap-btn');
 
-	svg.innerHTML = '';
-
-	// STOP previous simulation if any
-	if (simulation) {
-		simulation.stop();
-	}
-
-	// Dynamic height based on node count (approximate)
-	// But since we have fixed CSS height, we'll just use that.
-	const width = svg.clientWidth || 400;
-	const height = svg.clientHeight || 400;
-
-	// 1. Flatten Data (Recursive)
-	const nodes = [];
-	const links = [];
-
-	function processNode(node, parent, level) {
-		const flatNode = {
-			id: `n_${nodes.length}`,
-			name: node.isRoot && node.name.length > 30 ? node.name.substring(0, 27) + "..." : node.name,
-			// Initial Placement: Star Burst
-			x: parent ? parent.x + (Math.random() - 0.5) * 50 : width / 2,
-			y: parent ? parent.y + (Math.random() - 0.5) * 50 : height / 2,
-			level: level,
-			isRoot: level === 0,
-			mass: level === 0 ? 10 : 2 // Root is heavier
+	if (statusEl) statusEl.textContent = "Diagram ready!";
+	if (btn) {
+		btn.classList.remove('hidden');
+		btn.onclick = () => {
+			// Save data and open tab
+			chrome.storage.local.set({ "atlas_mindmap_data": mindmapData }, () => {
+				chrome.tabs.create({ url: chrome.runtime.getURL('mindmap.html') });
+			});
 		};
-		nodes.push(flatNode);
-
-		if (parent) {
-			links.push({ source: parent, target: flatNode });
-		}
-
-		if (node.children && node.children.length > 0) {
-			node.children.forEach(child => processNode(child, flatNode, level + 1));
-		}
 	}
-
-	processNode(mindmapData, null, 0);
-
-	// 2. Setup rendering elements
-	const linkGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-	svg.appendChild(linkGroup);
-	const nodeGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-	svg.appendChild(nodeGroup);
-
-	// Create visual elements
-	links.forEach(link => {
-		const line = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-		line.setAttribute('stroke', 'rgba(139, 92, 246, 0.2)');
-		line.setAttribute('stroke-width', '1.5');
-		line.setAttribute('fill', 'none');
-		link.el = line;
-		linkGroup.appendChild(line);
-	});
-
-	nodes.forEach(node => {
-		const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-		g.style.cursor = 'grab';
-
-		// Pro-Consumer Colors
-		const color = node.isRoot ? '#8B5CF6' : 'rgba(139, 92, 246, 0.1)';
-		const textColor = node.isRoot ? '#FFFFFF' : '#D1D5DB';
-		const strokeColor = node.isRoot ? '#7C3AED' : 'rgba(139, 92, 246, 0.3)';
-
-		const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-		text.setAttribute('text-anchor', 'middle');
-		text.setAttribute('fill', textColor);
-		text.setAttribute('font-size', '11px');
-		text.setAttribute('font-family', 'Inter, sans-serif');
-		text.setAttribute('dy', '0.35em');
-		text.setAttribute('pointer-events', 'none');
-
-		// Text Wrapping (Simple)
-		const words = node.name.split(' ');
-		if (words.length > 3 && !node.isRoot) {
-			text.textContent = words.slice(0, 3).join(' ') + '...';
-		} else {
-			text.textContent = node.name;
-		}
-
-		// Measure text
-		const fontSize = 11;
-		const charWidth = fontSize * 0.6;
-		const textWidth = Math.max(80, text.textContent.length * charWidth + 32);
-
-		node.width = textWidth;
-		node.height = 32;
-
-		node.radius = Math.max(node.width, node.height) / 2;
-
-		const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-		rect.setAttribute('rx', '16'); // Fully rounded pill
-		rect.setAttribute('ry', '16');
-		rect.setAttribute('fill', color);
-		rect.setAttribute('stroke', strokeColor);
-		rect.setAttribute('stroke-width', '1');
-		rect.setAttribute('width', node.width);
-		rect.setAttribute('height', node.height);
-		rect.style.transition = 'all 0.2s ease';
-
-		g.appendChild(rect);
-		g.appendChild(text);
-
-		node.el = g;
-		node.rect = rect;
-		node.text = text;
-		nodeGroup.appendChild(g);
-
-		// Interactivity
-		g.addEventListener('mousedown', (e) => onDragStart(e, node, svg));
-		g.addEventListener('mouseenter', () => {
-			rect.setAttribute('stroke-width', '2');
-			rect.setAttribute('fill', node.isRoot ? '#7C3AED' : 'rgba(139, 92, 246, 0.2)');
-		});
-		g.addEventListener('mouseleave', () => {
-			rect.setAttribute('stroke-width', '1');
-			rect.setAttribute('fill', color);
-		});
-	});
-
-	// 3. Start Simulation
-	simulation = new SimpleForceSimulation(nodes, links, width, height);
-	simulation.start();
 }
 
 /**
  * Improved Physics Engine with Collision Detection
  */
-class SimpleForceSimulation {
-	constructor(nodes, links, width, height) {
-		this.nodes = nodes;
-		this.links = links;
-		this.width = width;
-		this.height = height;
-		this.running = false;
-		this.animationId = null;
-
-		// Initialize velocities
-		this.nodes.forEach(n => { n.vx = 0; n.vy = 0; });
-	}
-
-	start() {
-		this.running = true;
-		const tick = () => {
-			if (!this.running) return;
-			this.update();
-			this.draw();
-			this.animationId = requestAnimationFrame(tick);
-		};
-		tick();
-	}
-
-	stop() {
-		this.running = false;
-		if (this.animationId) cancelAnimationFrame(this.animationId);
-	}
-
-	update() {
-		const k = 0.05; // Spring constant (weaker spring for more spread)
-		const repulsion = 5000; // Stronger Repulsion
-		const centerForce = 0.02; // Weak center pull
-		const damping = 0.75;
-
-		// 1. Repulsion (Nodes push apart)
-		for (let i = 0; i < this.nodes.length; i++) {
-			for (let j = i + 1; j < this.nodes.length; j++) {
-				const a = this.nodes[i];
-				const b = this.nodes[j];
-				let dx = b.x - a.x;
-				let dy = b.y - a.y;
-				let distSq = dx * dx + dy * dy;
-				if (distSq === 0) { dx = 0.1; dy = 0.1; distSq = 0.02; }
-
-				const dist = Math.sqrt(distSq);
-
-				// Repulsion force
-				const force = repulsion / (distSq + 100);
-
-				const fx = (dx / dist) * force;
-				const fy = (dy / dist) * force;
-
-				if (!a.isDragging && !a.isRoot) { a.vx -= fx; a.vy -= fy; }
-				if (!b.isDragging && !b.isRoot) { b.vx += fx; b.vy += fy; }
-
-				// COLLISION DETECTION (Bounding Box / Radius Approximation)
-				// We treat nodes as circles for simple physics collision
-				const minDist = (a.width + b.width) / 2 * 0.8; // 0.8 factor to allow slight overlap for pill shapes
-				if (dist < minDist) {
-					// Push apart efficiently
-					const overlap = minDist - dist;
-					const pushX = (dx / dist) * overlap * 0.1;
-					const pushY = (dy / dist) * overlap * 0.1;
-
-					if (!a.isDragging) { a.vx -= pushX; a.vy -= pushY; }
-					if (!b.isDragging) { b.vx += pushX; b.vy += pushY; }
-				}
-			}
-		}
-
-		// 2. Spring Force (Hooke's Law)
-		this.links.forEach(link => {
-			const a = link.source;
-			const b = link.target;
-			// Dynamic target length based on node sizes
-			const targetLength = (a.width + b.width) / 1.5 + 40;
-
-			let dx = b.x - a.x;
-			let dy = b.y - a.y;
-			const dist = Math.sqrt(dx * dx + dy * dy) || 0.1;
-
-			const displacement = dist - targetLength;
-			const force = displacement * k;
-
-			const fx = (dx / dist) * force;
-			const fy = (dy / dist) * force;
-
-			if (!a.isDragging) { a.vx += fx; a.vy += fy; }
-			if (!b.isDragging) { b.vx -= fx; b.vy -= fy; }
-		});
-
-		// 3. Center Gravity & Update
-		this.nodes.forEach(node => {
-			if (node.isDragging) return;
-
-			// Pull to center
-			if (!node.isRoot) {
-				node.vx += (this.width / 2 - node.x) * centerForce;
-				node.vy += (this.height / 2 - node.y) * centerForce;
-			} else {
-				// Root stays center strongly
-				node.x += (this.width / 2 - node.x) * 0.1;
-				node.y += (this.height / 2 - node.y) * 0.1;
-			}
-
-			// Apply Damping
-			node.vx *= damping;
-			node.vy *= damping;
-
-			// Update Position
-			node.x += node.vx;
-			node.y += node.vy;
-
-			// Keep in bounds
-			const marginX = node.width / 2;
-			const marginY = node.height / 2;
-			node.x = Math.max(marginX, Math.min(this.width - marginX, node.x));
-			node.y = Math.max(marginY, Math.min(this.height - marginY, node.y));
-		});
-	}
-
-	draw() {
-		this.links.forEach(link => {
-			const s = link.source;
-			const t = link.target;
-			// Smooth Bezier Curve Connectors
-			const dx = t.x - s.x;
-			const dy = t.y - s.y;
-			const dr = Math.sqrt(dx * dx + dy * dy) * 1.5;
-			link.el.setAttribute('d', `M${s.x},${s.y}A${dr},${dr} 0 0,1 ${t.x},${t.y}`);
-		});
-
-		this.nodes.forEach(node => {
-			// Update Rect (Pill) - Center on coordinate
-			if (node.rect) {
-				node.rect.setAttribute('x', node.x - node.width / 2);
-				node.rect.setAttribute('y', node.y - node.height / 2);
-			}
-
-			// Update Text - Center
-			if (node.text) {
-				node.text.setAttribute('x', node.x);
-				node.text.setAttribute('y', node.y + 1); // Slight adjustment
-			}
-		});
-	}
-}
+// Physics simulation removed to mindmap.js
 
 // Drag State
 let dragNode = null;
 
-function onDragStart(e, node, svg) {
-	dragNode = node;
-	node.isDragging = true;
-	node.el.style.cursor = 'grabbing';
-
-	node.vx = 0;
-	node.vy = 0;
-
-	const onDrag = (e) => {
-		const rect = svg.getBoundingClientRect();
-		// Convert mouse pos to SVG pos
-		node.x = e.clientX - rect.left;
-		node.y = e.clientY - rect.top;
-
-		// Keep in bounds
-		node.x = Math.max(node.width / 2, Math.min(svg.clientWidth - node.width / 2, node.x));
-		node.y = Math.max(node.height / 2, Math.min(svg.clientHeight - node.height / 2, node.y));
-
-		// Wake up simulation
-		if (!simulation.running) simulation.start();
-	};
-
-	const onDragEnd = () => {
-		node.isDragging = false;
-		window.removeEventListener('mousemove', onDrag);
-		window.removeEventListener('mouseup', onDragEnd);
-	};
-
-	window.addEventListener('mousemove', onDrag);
-	window.addEventListener('mouseup', onDragEnd);
-}
+// Drag logic moved to mindmap.js
 
 /**
  * Render Resources List
@@ -1041,7 +751,7 @@ async function launchQuiz(progress) {
 
 	try {
 		// Fetch Quiz
-		const response = await fetch("http://localhost:8000/generate-quiz", {
+		const response = await fetch("http://localhost:8001/generate-quiz", {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({
@@ -1231,108 +941,6 @@ function completeLevelUp(progress) {
 	}
 }
 
-/**
- * Cleanup Python Code (Fix common quoting issues)
- */
-function cleanupPythonCode(code) {
-	if (!code) return '';
-	let clean = code;
-
-	const lines = clean.split('\n');
-	const fixedLines = lines.map(line => {
-		const fDoubleMatch = (line.match(/f"/g) || []).length;
-		if (fDoubleMatch > 0) {
-			const dQuoteCount = (line.match(/"/g) || []).length;
-			if ((dQuoteCount - fDoubleMatch) % 2 !== 0) {
-				return line + '"';
-			}
-		}
-		const fSingleMatch = (line.match(/f'/g) || []).length;
-		if (fSingleMatch > 0) {
-			const sQuoteCount = (line.match(/'/g) || []).length;
-			if ((sQuoteCount - fSingleMatch) % 2 !== 0) {
-				return line + "'";
-			}
-		}
-		return line;
-	});
-
-	return fixedLines.join('\n');
-}
-
-/**
- * Safe Clean Python Code (Aggressive fix for SyntaxErrors in PDF data)
- */
-function safeCleanPythonCode(code) {
-	if (!code) return '';
-	let clean = code;
-
-	// 1. Strip trailing backslashes before quotes to prevent escaping the closer
-	// Matches: text = """...\" or text = rf"""...\"
-	// We replace \ before """ with \\
-	clean = clean.replace(/\\+(\"\"\"|\'\'\')/g, (match, quotes) => {
-		const slashes = match.slice(0, -3);
-		if (slashes.length % 2 !== 0) {
-			return slashes + '\\' + quotes;
-		}
-		return match;
-	});
-
-	// 2. Aggressive char removal if the above fails (handled by the caller's retry logic if needed)
-	// For the initial "Safe Clean", we'll just focus on the backslash issue and quoting balance
-
-	const tripleQuoteCount = (clean.match(/(\"\"\"|\'\'\')/g) || []).length;
-	if (tripleQuoteCount % 2 !== 0) {
-		clean += '\n"""';
-	}
-
-	return clean;
-}
-
-/**
- * Balance Brackets & Parentheses
- */
-function balanceBrackets(code) {
-	if (!code) return '';
-	let clean = code;
-	const pairs = { '(': ')', '[': ']', '{': '}' };
-	const stack = [];
-
-	for (let char of clean) {
-		if (pairs[char]) {
-			stack.push(char);
-		} else if (Object.values(pairs).includes(char)) {
-			const last = stack[stack.length - 1];
-			if (pairs[last] === char) {
-				stack.pop();
-			}
-		}
-	}
-
-	// Close unclosed brackets in reverse order
-	while (stack.length > 0) {
-		const open = stack.pop();
-		clean += pairs[open];
-	}
-
-	return clean;
-}
-
-/**
- * Safe Correct Python Code (Stripping last line on SyntaxError)
- */
-function safeCorrectPythonCode(code) {
-	if (!code) return '';
-	const lines = code.trimEnd().split('\n');
-	if (lines.length <= 1) return code;
-
-	console.log("[Atlas AI] Safe Correction: Stripping last potentially incomplete line");
-	// Remove the last line (likely incomplete math or call)
-	const stripped = lines.slice(0, -1).join('\n');
-
-	// Ensure we close any leftover triple quotes or brackets
-	return balanceBrackets(safeCleanPythonCode(stripped));
-}
 
 /**
  * Initialize Difficulty Toggle
@@ -1376,80 +984,6 @@ window.addEventListener("DOMContentLoaded", () => {
 	const chatMessages = document.getElementById('chat-messages');
 	if (chatMessages) chatMessages.innerHTML = '<div class="chat-message system"><div class="chat-bubble">💬 Ask questions...</div></div>';
 
-	// Playground Run Button
-	const runBtn = document.getElementById('run-code-btn');
-	if (runBtn) {
-		runBtn.addEventListener('click', async () => {
-			const editor = document.getElementById('python-editor');
-			const output = document.getElementById('code-output');
-			if (!editor || !output) return;
-
-			output.textContent = "Running...";
-			output.classList.remove('hidden');
-
-			let codeToRun = editor.value;
-
-			try {
-				let response = await fetch("http://localhost:8000/run", {
-					method: "POST",
-					headers: { "Content-Type": "application/json" },
-					body: JSON.stringify({ code: codeToRun })
-				});
-				let data = await response.json();
-
-				// AUTOMATIC CODE CLEANUP on SyntaxError
-				if (data.error && (data.error.includes("SyntaxError") || data.error.includes("unterminated") || data.error.includes("EOF") || data.error.includes("never closed"))) {
-					console.log("[Atlas AI] Syntax error detected, attempting safe-cleanup...");
-
-					let cleanedCode = cleanupPythonCode(codeToRun);
-
-					if (cleanedCode === codeToRun || data.error.includes("unterminated")) {
-						cleanedCode = safeCleanPythonCode(codeToRun);
-					}
-
-					// BRACKET BALANCING PASS
-					cleanedCode = balanceBrackets(cleanedCode);
-
-					// AGGRESSIVE FALLBACK (Self-Correction) if standard fix fails to change code
-					if (cleanedCode === codeToRun && data.error.includes("never closed")) {
-						cleanedCode = safeCorrectPythonCode(codeToRun);
-					}
-
-					if (cleanedCode !== codeToRun) {
-						codeToRun = cleanedCode;
-						editor.value = codeToRun;
-
-						response = await fetch("http://localhost:8000/run", {
-							method: "POST",
-							headers: { "Content-Type": "application/json" },
-							body: JSON.stringify({ code: codeToRun })
-						});
-						data = await response.json();
-					}
-				}
-
-				output.textContent = data.result || data.error || "No output";
-			} catch (e) {
-				output.textContent = "Error: " + e.message;
-			}
-		});
-	}
-
-	// Copy Playground Logic
-	const copyBtn = document.getElementById('copy-playground-btn');
-	if (copyBtn) {
-		copyBtn.addEventListener('click', () => {
-			const editor = document.getElementById('python-editor');
-			if (editor) {
-				navigator.clipboard.writeText(editor.value).then(() => {
-					copyBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
-					setTimeout(() => {
-						copyBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>';
-					}, 2000);
-				});
-			}
-		});
-	}
 
 	// Logic Flow Toggle
 	const toggleFlowBtn = document.getElementById('toggle-flow-btn');
@@ -1492,7 +1026,7 @@ window.addEventListener("DOMContentLoaded", () => {
 			resultsContainer.classList.remove('hidden');
 
 			try {
-				const response = await fetch("http://localhost:8000/search-github", {
+				const response = await fetch("http://localhost:8001/search-github", {
 					method: "POST",
 					headers: { "Content-Type": "application/json" },
 					body: JSON.stringify({ query: query })

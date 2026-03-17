@@ -58,16 +58,16 @@ def build_prompt(page_title, page_text, level="student"):
         - Tone: Educational, structured, and helpful.
         """
 
-    return f"""
+    template = """
 PAGE TITLE:
-{page_title}
+{{page_title}}
 
 PAGE CONTENT:
-{page_text}
+{{page_text}}
 
 INSTRUCTIONS:
-You are adapting your analysis for a specific audience: **{level.upper()}**.
-{level_instruction}
+You are adapting your analysis for a specific audience: **{{level_upper}}**.
+{{level_instruction}}
 
 1. Write a 1-2 sentence summary of this page (Adhere strictly to the requested STYLE).
 2. Extract 3-5 key concepts.
@@ -79,32 +79,31 @@ You are adapting your analysis for a specific audience: **{level.upper()}**.
    - MUST use exactly this format: graph TD; A[Start] --> B[Process]; B --> C[End];
    - DO NOT wrap the output in ```mermaid ... ``` or any other markdown.
    - Return raw Mermaid syntax only.
- 7. Provide a "Instant Playground" Python snippet that demonstrates the core concept. IMPORTANT: Do NOT use matplotlib or any plotting library. Use only print() for output. You may use numpy and math. The code must be self-contained, runnable, and produce printed text output.
-   - ALWAYS use Raw Triple-Quoted f-strings (rf\"\"\"...\"\"\") for any multi-line strings or data extracted from the page.
-   - SANITIZE page text: If a string ends in a backslash (\), escape it (\\) or remove it to prevent premature escaping of the closing quote.
-   - COMPLETION PROMPTING: Ensure all function calls and math expressions are fully closed (check your parentheses () and brackets []). Use temporary variables for long expressions to keep lines short and readable.
-
 Return ONLY valid JSON:
-{{
+{
   "summary": "1-2 sentence explanation",
   "key_concepts": ["concept1", "concept2", "concept3"],
-  "mindmap": {{
-    "name": "{page_title}",
+  "mindmap": {
+    "name": "{{page_title}}",
     "children": [
-      {{ "name": "Introduction", "children": [] }},
-      {{ "name": "Main Section", "children": [] }}
+      { "name": "Introduction", "children": [] },
+      { "name": "Main Section", "children": [] }
     ]
-  }},
+  },
   "next_step": "Next Topic Name",
   "resources": [
-    {{ "type": "Paper", "title": "Search Papers on [Next Step]", "url": "https://scholar.google.com/scholar?q=[Next Step]" }},
-    {{ "type": "Video", "title": "Watch Videos on [Next Step]", "url": "https://www.youtube.com/results?search_query=[Next Step]" }},
-    {{ "type": "Course", "title": "Find Courses on [Next Step]", "url": "https://www.coursera.org/search?query=[Next Step]" }}
+    { "type": "Paper", "title": "Search Papers on [Next Step]", "url": "https://scholar.google.com/scholar?q=[Next Step]" },
+    { "type": "Video", "title": "Watch Videos on [Next Step]", "url": "https://www.youtube.com/results?search_query=[Next Step]" },
+    { "type": "Course", "title": "Find Courses on [Next Step]", "url": "https://www.coursera.org/search?query=[Next Step]" }
   ],
-  "flowchart": "graph TD;\\nA[Start] --> B[Process];\\nB --> C[End];",
-  "python_code": "import numpy as np\\n# Use rf\"\"\" for raw data\\npdf_text = rf\\\"\\\"\\\"Sample extracted text from {page_title}\\\"\\\"\\\"\\nprint(f\\\"\\\"\\\"Analysis: {{pdf_text[:50]}}...\\\"\\\"\\\")"
-}}
+  "flowchart": "graph TD;\\nA[Start] --> B[Process];\\nB --> C[End];"
+}
 """
+    return (template
+            .replace("{{page_title}}", page_title)
+            .replace("{{page_text}}", page_text)
+            .replace("{{level_upper}}", level.upper())
+            .replace("{{level_instruction}}", level_instruction))
 
 def build_chat_prompt(page_title, page_text, user_query):
     return f"""

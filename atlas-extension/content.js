@@ -17,7 +17,7 @@ async function extractPdfContent() {
     // Clean filename as some titles contain illegal chars
     formData.append("file", blob, filename.replace(/[/\\?%*:|"<>]/g, '-'));
 
-    const bgResponse = await fetch("http://localhost:8000/analyze-pdf", {
+    const bgResponse = await fetch("http://localhost:8001/analyze-pdf", {
       method: "POST",
       body: formData // Note: Do NOT set Content-Type header when using FormData
     });
@@ -60,7 +60,7 @@ async function extractContent() {
   const content = {
     title: document.title,
     url: window.location.href,
-    text: document.body.innerText.slice(0, 8000),
+    text: document.body.innerText.slice(0, 8001),
     timestamp: Date.now()
   };
 
@@ -129,7 +129,7 @@ async function analyzeStruggle(data) {
 
     // Try to get backend hint (optional - don't block if fails)
     try {
-      const response = await fetch("http://localhost:8000/analyze-struggle", {
+      const response = await fetch("http://localhost:8001/analyze-struggle", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

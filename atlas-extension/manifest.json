@@ -36,7 +36,10 @@
     {
       "resources": [
         "lib/pdf.min.js",
-        "lib/pdf.worker.min.js"
+        "lib/pdf.worker.min.js",
+        "mindmap.html",
+        "mindmap.js",
+        "mindmap.css"
       ],
       "matches": [
         "<all_urls>"

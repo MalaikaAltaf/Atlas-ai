@@ -70,10 +70,11 @@
 					</svg>
 					MINDMAP
 				</div>
+				<button id="view-mindmap-btn" class="secondary-btn hidden"
+					style="font-size: 10px; padding: 4px 8px;">View Full Diagram</button>
 			</div>
-			<div id="mindmap-container">
-				<svg id="mindmap-svg" width="100%" height="100%"></svg>
-			</div>
+			<p id="mindmap-status" style="font-size: 13px; color: var(--text-muted); margin: 0;">Generating diagram...
+			</p>
 		</div>
 
 		<!-- 4. Next Step -->
@@ -113,34 +114,6 @@
 			<div id="logic-flow-content" class="collapsed">
 				<div id="logic-flow-container" class="flowchart-container"></div>
 				<button id="view-full-diagram" class="secondary-btn">View Full Diagram</button>
-			</div>
-		</div>
-
-		<!-- 6. Instant Playground -->
-		<div id="playground-section" class="card hidden">
-			<div class="card-header">
-				<div class="card-title">
-					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-						stroke-linejoin="round">
-						<polyline points="4 17 10 11 4 5"></polyline>
-						<line x1="12" y1="19" x2="20" y2="19"></line>
-					</svg>
-					INSTANT PLAYGROUND
-				</div>
-				<button id="copy-playground-btn" class="icon-btn" title="Copy Code">
-					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-						stroke-linejoin="round">
-						<rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-						<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-					</svg>
-				</button>
-			</div>
-			<div class="playground-wrapper">
-				<textarea id="python-editor" spellcheck="false" placeholder="Loading code..."></textarea>
-				<div class="playground-controls">
-					<button id="run-code-btn" class="secondary-btn">Execute</button>
-				</div>
-				<pre id="code-output" class="hidden"></pre>
 			</div>
 		</div>
 

@@ -9,8 +9,6 @@ import uvicorn
 import fitz
 import requests
 
-# ...existing code...
-
 # Initialize Gemini Client
 client = genai.Client(api_key=GEMINI_API_KEY)
 
@@ -86,7 +84,7 @@ async def analyze_page(request: AnalyzeRequest):
             model="gemini-2.5-flash-lite", 
             contents=[SYSTEM_PROMPT, prompt]
         )
-        
+        print(f"[ATLAS] Response received. Length: {len(response.text)}")
         result_text = response.text.strip()
         
         # Clean up potential markdown formatting from AI response
@@ -113,8 +111,7 @@ async def analyze_page(request: AnalyzeRequest):
             "next_step": parsed.get("next_step", "Continue exploring this topic"),
             "mindmap": parsed.get("mindmap", {"name": "Topic", "children": []}),
             "resources": parsed.get("resources", []),
-            "flowchart": parsed.get("flowchart", None),
-            "python_code": parsed.get("python_code", None)
+            "flowchart": parsed.get("flowchart", None)
         }
         
         # Ensure key_concepts is always a list
@@ -261,27 +258,6 @@ async def analyze_struggle(request: StruggleAnalysisRequest):
         print(f"[ATLAS] Error: {e}")
         return {"hint": "You seem stuck. Try breaking this into smaller steps.", "confidence": 0.5}
 
-class RunRequest(BaseModel):
-    code: str
-
-@app.post("/run")
-async def run_code(request: RunRequest):
-    try:
-        # SAFETY WARNING: exec is used here for local prototype. 
-        # In production, use docker or sandbox.
-        import sys
-        from io import StringIO
-        import contextlib
-
-        # Capture output
-        output_buffer = StringIO()
-        with contextlib.redirect_stdout(output_buffer):
-            exec(request.code, {'__builtins__': __builtins__, 'print': print})
-        
-        return {"result": output_buffer.getvalue()}
-    except Exception as e:
-        return {"error": f"{type(e).__name__}: {str(e)}"}
-
 # --- GitHub RAG Search ---
 # Make chromadb optional due to pydantic v1 compatibility issues
 collection = None
@@ -342,5 +318,5 @@ async def search_code(request: SearchRequest):
         return {"error": str(e)}
 
 if __name__ == "__main__":
-    print("[ATLAS] Starting Atlas AI Backend on [http://0.0.0.0:8000](http://0.0.0.0:8000)")
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    print("[ATLAS] Starting Atlas AI Backend on [http://0.0.0.0:8001](http://0.0.0.0:8001)")
+    uvicorn.run(app, host="0.0.0.0", port=8001)
